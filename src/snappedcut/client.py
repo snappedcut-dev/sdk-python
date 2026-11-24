@@ -6,8 +6,9 @@ import os
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, BinaryIO, Callable
+from typing import Any, BinaryIO
 from urllib.parse import quote, urlencode
 
 DEFAULT_BASE = "https://snappedcut.com"

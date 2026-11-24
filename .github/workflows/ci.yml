@@ -14,8 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.9 is the floor the package claims, so it is tested rather than hoped for.
-        python: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        # 3.10 is the floor the package claims, so it is tested rather than hoped for.
+        python: ['3.10', '3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
