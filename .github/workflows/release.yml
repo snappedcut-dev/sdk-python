@@ -48,7 +48,9 @@ jobs:
         with:
           name: dist
           path: dist/
-      # No token: PyPI trusted publishing authenticates this workflow by OIDC.
+      # An API token until a trusted publisher is registered on PyPI; then drop
+      # the password and turn attestations back on (they need OIDC).
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          attestations: true
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          attestations: false
