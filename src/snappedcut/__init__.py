@@ -2,7 +2,7 @@
 
 **The standard library and nothing else.** No dependencies, so it installs into
 a locked-down CI image or a Lambda without pulling a tree behind it. The API is
-five endpoints; a client for it should be readable in one sitting.
+small; a client for it should be readable in one sitting.
 
     from snappedcut import SnappedCut
 
@@ -17,12 +17,14 @@ can make Python do that.
 """
 
 from .client import (
+    VERSION,
     AccountSummary,
     Job,
     Priced,
     QueuedJob,
     SnappedCut,
     SnappedCutError,
+    verify_webhook,
 )
 
 __all__ = [
@@ -32,5 +34,6 @@ __all__ = [
     "QueuedJob",
     "SnappedCut",
     "SnappedCutError",
+    "verify_webhook",
 ]
-__version__ = "0.1.0"
+__version__ = VERSION

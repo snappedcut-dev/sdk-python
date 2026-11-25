@@ -14,14 +14,36 @@ from snappedcut import SnappedCut
 
 snapcut = SnappedCut()                      # reads SNAPCUT_KEY
 
-job = snapcut.render(Path("project.zip").read_bytes())
-print(f"charged {job.charged} credits for {job.priced.seconds}s")
+clip = snapcut.upload("clip.webm", "video/webm")   # a path streams, chunk by chunk
+design = {"width": 1080, "height": 1920, "clips": [{"type": "video", "asset": clip["id"]}]}
+outputs = [{"format": "mp4", "preset": "vertical"}, {"format": "webm", "preset": "hd720"}]
+created = snapcut.render_design(design, {"outputs": outputs}, idempotency_key="order-42")
 
-Path("out.webm").write_bytes(snapcut.wait(job.id, on_state=lambda j: print(j.state)))
+job = snapcut.wait_for_job(created["job"]["id"])
+for output in job["outputs"]:
+    data = snapcut.download_output(job["id"], output["index"])
+    Path(f"out-{output['index']}.{output['format']}").write_bytes(data)
 ```
+
+The same `idempotency_key` sent twice returns the first job (`created["idempotent"]`)
+instead of charging again, so a retry after a dropped connection is safe. Presets:
+`source`, `vertical`, `square`, `portrait`, `landscape`, `hd720`, `uhd2160` —
+`snapcut.operations()` lists them live.
 
 Get a key from [your account page](https://snappedcut.com/account) — it looks
 like `sk_snapcut_…`. Keep it on a server; it spends credits.
+
+## Verifying webhooks
+
+```python
+from snappedcut import verify_webhook
+
+if not verify_webhook(secret, raw_body, request.headers["X-Snappedcut-Signature"]):
+    return 400
+```
+
+Pass the body exactly as it arrived, not re-serialised JSON. A signature more
+than five minutes from now is refused, so a captured delivery cannot be replayed.
 
 ## API
 
@@ -29,13 +51,27 @@ like `sk_snapcut_…`. Keep it on a server; it spends credits.
 | --- | --- |
 | `SnappedCut(key=None, base=..., timeout=120.0)` | `key` falls back to `$SNAPCUT_KEY`. `base` defaults to `https://snappedcut.com`. |
 | `account()` | `AccountSummary` — who the key belongs to, credits left, the price list. |
-| `render(bundle, kind="cloud-render")` | Queue a render. `bundle` is `bytes` or any file object. |
+| `render(bundle, kind="cloud-render")` | Queue a render of a project bundle. `bundle` is `bytes` or any file object. |
 | `job(id)` / `jobs()` | One `Job`, or every job on the account. |
 | `output(id)` | The rendered bytes. Raises unless the job is done. |
 | `wait(id, timeout=1800, on_state=None)` | Polls to completion, returns the bytes. |
+| `create_job(request, idempotency_key=None)` | A JSON job: a design, an uploaded bundle, or a tool over uploaded media. |
+| `create_batch(jobs, defaults=None)` | Many jobs in one request; each succeeds or is refused on its own. |
+| `get_job(id)` / `list_jobs()` / `wait_for_job(id, timeout=1800)` | The job as a dict, with every output. |
+| `download_output(id, index=0)` | One output's bytes. |
+| `compile_design(design, vars=None)` / `render_design(design, options=None, idempotency_key=None)` | Check a design, or render it. |
+| `upload(data, content_type, name=None)` / `get_asset(id)` / `delete_asset(id)` | Upload once, use by id. `data` is bytes, a path or a binary file. |
+| `operations()` | Every operation and output preset. |
+| `usage(from_=None, to=None, end_user_id=None, group_by=None)` / `delete_end_user(id)` | Spend, grouped; and erasing one end user. |
+| `create_embed_token(pk, end_user_id, ...)` | A session token for the embedded editor. |
+| `list_destinations()` / `create_destination` / `get_destination` / `update_destination` / `delete_destination` / `test_destination` / `presign_destination` | Your own S3-compatible buckets as render targets. A failed `test_destination` is returned (`ok: False`), not raised. |
+| `list_webhooks()` / `create_webhook(url, events=None)` / `get_webhook` / `update_webhook` / `delete_webhook` / `rotate_webhook` / `webhook_deliveries` / `test_webhook` | Webhook endpoints. The secret comes back once, from create and rotate. |
+| `verify_webhook(secret, raw_body, header, now_ms=None)` | Also `SnappedCut.verify_webhook`. |
 
-Everything is a frozen dataclass, and `py.typed` ships, so an editor and
-`mypy --strict` both see real types.
+`account()`, `render()`, `job()` and `wait()` return frozen dataclasses, and
+`py.typed` ships, so an editor and `mypy --strict` both see real types. The
+calls added in 0.2 return the JSON as plain dicts, so a field the API adds
+within a version simply appears rather than breaking anything.
 
 ## Large bundles resume themselves
 
@@ -56,8 +92,11 @@ actually charged comes back as `charged`, with the server's reasoning in
 
 ## Errors
 
-Every failure raises `SnappedCutError` with the HTTP `status` on it, and the two
-failures you actually branch on have properties so you need not parse a message:
+Every failure raises `SnappedCutError` with the HTTP `status`, the server's
+`message` and `code`, and `retry_after_ms` on it, and the two failures you
+actually branch on have properties so you need not parse a message
+(`is_out_of_credits` / `is_rate_limited` are the same, under the names every
+Snapped Cut SDK shares):
 
 ```python
 from snappedcut import SnappedCutError
